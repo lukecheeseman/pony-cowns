@@ -46,12 +46,12 @@ class When[A: Any iso]
       end
     })
 
-  fun run(f: {ref (A): A^} iso, after: (Promise[None] | None) = None): Promise[None] =>
+  fun run(f: {ref (ref->A)} iso, after: (Promise[None] | None) = None): Promise[None] =>
     var body = Behaviour(1, {ref ()(fcell = recover iso [ consume f ] end) =>
       try
         _c1.empty({ref (a: A)(fcell = recover iso [ fcell.pop()? ] end) => true
           try
-            _c1.fill(fcell.pop()?(consume a))
+            fcell.pop()?(consume a)
           end
         } iso)
       end
@@ -203,38 +203,29 @@ class Phil
     left = left'
     right = right'
 
-  /*
-  fun iso _eat(p: Phil iso) =>
-    When[Fork iso](left).op_and[Fork iso](right).run({ref (left: Fork iso, right: Fork iso)(p = consume p) =>
-      left.pick_up()
-      right.pick_up()
-      p.eat()
-      (consume left, consume right)
-    })*/
-/*
-  fun iso eat() =>
+  fun iso eat(env: Env) =>
     var l = left
     var r = right
-    When[Fork iso](l).op_and[Fork iso](r).run({iso (left: Fork iso, right: Fork iso)(p: Phil iso = consume this) =>
+    When[Fork iso](l).op_and[Fork iso](r).run({ref (left: Fork iso, right: Fork iso)(pcell = recover iso [ consume this ] end, env) =>
       left.pick_up()
       right.pick_up()
-      (consume this).p.eat()
+      env.out.print("HI")
+      try
+        var p = pcell.pop()?
+        p.hunger = p.hunger - 1
+        if p.hunger > 0 then
+          (consume p).eat(env)
+        else
+          env.out.print("Phil has finished eating")
+        end
+      end
       (consume left, consume right)
-    })
-
-  fun iso eat() =>
-    When[Fork iso](left).op_and[Fork iso](right).run({iso (left: Fork iso, right: Fork iso)(l) =>
-      left.pick_up()
-      right.pick_up()
-      (consume left, consume right)
-    })
-*/
+    } iso)
 
 actor Main
   new create(env: Env) =>
-    test2(env)
+    test1(env)
 
-/*
   fun test1(env: Env) =>
     var f1 = Cown[Fork iso](Fork(1))
     var f2 = Cown[Fork iso](Fork(2))
@@ -242,12 +233,12 @@ actor Main
     var f4 = Cown[Fork iso](Fork(4))
     var f5 = Cown[Fork iso](Fork(5))
   
-    Phil(1, f1, f2).eat()
-    Phil(2, f2, f3).eat()
-    Phil(3, f3, f4).eat()
-    Phil(4, f4, f5).eat()
-    Phil(5, f5, f1).eat()
-*/
+    Phil(1, f1, f2).eat(env)
+    Phil(2, f2, f3).eat(env)
+    Phil(3, f3, f4).eat(env)
+    Phil(4, f4, f5).eat(env)
+    Phil(5, f5, f1).eat(env)
+
 
   fun test2(env: Env) =>
     var c1 = Cown[U64Obj iso](recover U64Obj(10) end)
