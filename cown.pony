@@ -15,11 +15,11 @@ use "promises"
 
 actor Behaviour
   var _countdown: U64
-  var _f: {()} val
+  var _f: {ref ()} iso
 
-  new create(c: U64, f: {()} val) =>
+  new create(c: U64, f: {ref ()} iso) =>
     _countdown = c
-    _f = f
+    _f = consume f
 
   be countdown() =>
     _countdown = _countdown - 1
@@ -31,6 +31,23 @@ class Cell[T: Any iso]
   var _contents: Array[T] iso
   new iso create(contents: T) => _contents = [consume contents]
   fun ref extract(): T^? => _contents.pop()?
+
+class Behaviour1[A: Any iso]
+  var c1: Cown[A]
+  var f: Array[{ref (A): A^} iso]
+  var a: Array[A]
+
+  new iso create(c1': Cown[A], f': {ref (A): A^} iso) =>
+    c1 = c1'
+    f = [consume f']
+    a = []
+
+  fun ref with_a(a': A) => a.unshift(consume a')
+
+  fun ref apply() =>
+    try
+      c1.fill(f.pop()?(a.pop()?))
+    end
 
 class When[A: Any iso]
   var _c1: Cown[A]
@@ -51,12 +68,16 @@ class When[A: Any iso]
       end
     })
 
-  fun run(f: {(A): A^} val, after: (Promise[None] | None) = None): Promise[None] =>
-    var body = Behaviour(1, {()(f) =>
-      _c1.empty({(a: A) =>
-        _c1.fill(f(consume a))
-      })
-    })
+  fun run(f: {ref (A): A^} iso, after: (Promise[None] | None) = None): Promise[None] =>
+    var be1 = Behaviour1[A].create(_c1, consume f)
+    var body = Behaviour(1, {ref ()(be1cell = recover iso [ consume be1 ] end) =>
+      try
+        var be1 = be1cell.pop()?
+        _c1.empty({ref (a: A)(be1 = consume be1) =>
+          be1.>with_a(consume a).>apply()
+        } iso)
+      end
+    } iso)
     var p = Promise[None]
     match after
       | None => _send(body, p)
@@ -64,6 +85,7 @@ class When[A: Any iso]
     end
     p
 
+  /*
   fun op_and[B: Any iso](c2: Cown[B]): _When2[A, B] =>
     _When2[A, B](_c1, c2)
 
@@ -108,7 +130,7 @@ class When[A: Any iso]
         | None => _send(body, p)
         | let after': Promise[None] => after'.next[None]({(_: None) => _When2[A, B](_c1, _c2)._send(body, p)})
       end
-      p
+      p*/
 
 actor Cown[T: Any iso]
   // abuse a single space array to indicate the presence
@@ -165,6 +187,8 @@ actor Cown[T: Any iso]
     _state.push(consume state)
     process()
 
+// Using the API past here
+
 class U64Obj
   var o: U64
   new iso create(o': U64) => o = o'
@@ -175,8 +199,75 @@ class BoolObj
   new iso create(o': Bool) => o = o'
   fun ref neg() => o = not o
 
+class Fork
+  var id: U64
+  var count: U64
+  
+  new iso create(id': U64) =>
+    id = id'
+    count = 0
+  
+  fun ref pick_up() => count = count + 1
+
+class Phil
+  var id: U64
+  var hunger: U64
+  var left: Cown[Fork iso]
+  var right: Cown[Fork iso]
+
+  new iso create(id': U64, left': Cown[Fork iso], right': Cown[Fork iso]) =>
+    id = id'
+    hunger = 10
+    left = left'
+    right = right'
+
+  /*
+  fun iso _eat(p: Phil iso) =>
+    When[Fork iso](left).op_and[Fork iso](right).run({ref (left: Fork iso, right: Fork iso)(p = consume p) =>
+      left.pick_up()
+      right.pick_up()
+      p.eat()
+      (consume left, consume right)
+    })*/
+/*
+  fun iso eat() =>
+    var l = left
+    var r = right
+    When[Fork iso](l).op_and[Fork iso](r).run({iso (left: Fork iso, right: Fork iso)(p: Phil iso = consume this) =>
+      left.pick_up()
+      right.pick_up()
+      (consume this).p.eat()
+      (consume left, consume right)
+    })
+
+  fun iso eat() =>
+    When[Fork iso](left).op_and[Fork iso](right).run({iso (left: Fork iso, right: Fork iso)(l) =>
+      left.pick_up()
+      right.pick_up()
+      (consume left, consume right)
+    })
+*/
+
 actor Main
   new create(env: Env) =>
+    test2(env)
+
+/*
+  fun test1(env: Env) =>
+    var f1 = Cown[Fork iso](Fork(1))
+    var f2 = Cown[Fork iso](Fork(2))
+    var f3 = Cown[Fork iso](Fork(3))
+    var f4 = Cown[Fork iso](Fork(4))
+    var f5 = Cown[Fork iso](Fork(5))
+  
+    Phil(1, f1, f2).eat()
+    Phil(2, f2, f3).eat()
+    Phil(3, f3, f4).eat()
+    Phil(4, f4, f5).eat()
+    Phil(5, f5, f1).eat()
+*/
+
+  fun test2(env: Env) =>
     var c1 = Cown[U64Obj iso](recover U64Obj(10) end)
     var c2 = Cown[BoolObj iso](recover BoolObj(true) end)
 
@@ -190,4 +281,12 @@ actor Main
     after = When[U64Obj iso](c1).run({ (x: U64Obj iso) => x.inc(); consume x }, after)
     after = When[U64Obj iso](c1).run({ (x: U64Obj iso) => env.out.print(x.o.string()); consume x }, after)
 
-    (When[BoolObj iso](c2).op_and[U64Obj iso](c1)).run({ (x: BoolObj iso, y: U64Obj iso) => env.out.print("HI"); (consume x, consume y) }, after)
+    var l = U64Obj(42)
+    after = When[U64Obj iso](c1).run({ref (x: U64Obj iso)(l = consume l) =>
+      env.out.print(l.o.string())
+      l.inc()
+      env.out.print(l.o.string())
+      consume x 
+    } iso)
+
+    //(When[BoolObj iso](c2).op_and[U64Obj iso](c1)).run({ (x: BoolObj iso, y: U64Obj iso) => env.out.print("HI"); (consume x, consume y) }, after)
