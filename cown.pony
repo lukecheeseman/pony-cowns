@@ -27,28 +27,6 @@ actor Behaviour
       _f()
     end
 
-class Cell[T: Any iso]
-  var _contents: Array[T] iso
-  new iso create(contents: T) => _contents = [consume contents]
-  fun ref extract(): T^? => _contents.pop()?
-
-class Behaviour1[A: Any iso]
-  var c1: Cown[A]
-  var f: Array[{ref (A): A^} iso]
-  var a: Array[A]
-
-  new iso create(c1': Cown[A], f': {ref (A): A^} iso) =>
-    c1 = c1'
-    f = [consume f']
-    a = []
-
-  fun ref with_a(a': A) => a.unshift(consume a')
-
-  fun ref apply() =>
-    try
-      c1.fill(f.pop()?(a.pop()?))
-    end
-
 class When[A: Any iso]
   var _c1: Cown[A]
 
@@ -69,12 +47,13 @@ class When[A: Any iso]
     })
 
   fun run(f: {ref (A): A^} iso, after: (Promise[None] | None) = None): Promise[None] =>
-    var be1 = Behaviour1[A].create(_c1, consume f)
-    var body = Behaviour(1, {ref ()(be1cell = recover iso [ consume be1 ] end) =>
+    //var be1 = Behaviour1[A].create(_c1, consume f)
+    var body = Behaviour(1, {ref ()(fcell = recover iso [ consume f ] end) =>
       try
-        var be1 = be1cell.pop()?
-        _c1.empty({ref (a: A)(be1 = consume be1) =>
-          be1.>with_a(consume a).>apply()
+        _c1.empty({ref (a: A)(fcell = recover iso [ fcell.pop()? ] end) => true
+          try
+            _c1.fill(fcell.pop()?(consume a))
+          end
         } iso)
       end
     } iso)
