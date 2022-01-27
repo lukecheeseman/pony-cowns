@@ -47,7 +47,6 @@ class When[A: Any iso]
     })
 
   fun run(f: {ref (A): A^} iso, after: (Promise[None] | None) = None): Promise[None] =>
-    //var be1 = Behaviour1[A].create(_c1, consume f)
     var body = Behaviour(1, {ref ()(fcell = recover iso [ consume f ] end) =>
       try
         _c1.empty({ref (a: A)(fcell = recover iso [ fcell.pop()? ] end) => true
@@ -64,7 +63,6 @@ class When[A: Any iso]
     end
     p
 
-  /*
   fun op_and[B: Any iso](c2: Cown[B]): _When2[A, B] =>
     _When2[A, B](_c1, c2)
 
@@ -92,24 +90,29 @@ class When[A: Any iso]
         end
       })
 
-    fun run(f: {(A, B): (A^, B^)} val, after: (Promise[None] | None) = None) =>
-      var body = Behaviour(2, {()(f) =>
-        _c1.empty({ref (a: A)(_c1 = _c1, _c2 = _c2, f) =>
-          _c2.empty({ref (b: B)(a = Cell[A](consume a)) =>
+    fun run(f: {ref (A, B): (A^, B^)} iso, after: (Promise[None] | None) = None) =>
+      var body = Behaviour(2, {ref ()(fcell = recover iso [ consume f ] end) =>
+        try
+        _c1.empty({ref (a: A)(fcell = recover iso [ fcell.pop()? ] end, _c2 = _c2) =>
+          try
+          _c2.empty({ref (b: B)(facell = recover iso [ (fcell.pop()?, consume a) ] end, _c1 = _c1) => true
             try
-              (let a', let b') = f(a.extract()? , consume b)
+              (let f, let a) = facell.pop()?
+              (let a', let b') = f(consume a, consume b)
               _c1.fill(consume a')
               _c2.fill(consume b')
             end
-          })
-        })
-      })
+          } iso)
+          end
+        } iso)
+        end
+      } iso)
       var p = Promise[None]
       match after
         | None => _send(body, p)
         | let after': Promise[None] => after'.next[None]({(_: None) => _When2[A, B](_c1, _c2)._send(body, p)})
       end
-      p*/
+      p
 
 actor Cown[T: Any iso]
   // abuse a single space array to indicate the presence
