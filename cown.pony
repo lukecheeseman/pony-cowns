@@ -27,6 +27,11 @@ actor Behaviour
       _f()
     end
 
+class Cell[T: Any iso]
+  var _contents: Array[T] iso
+  new iso create(contents: T) => _contents = [consume contents]
+  fun ref extract(): T^? => _contents.pop()?
+
 class When[A: Any iso]
   var _c1: Cown[A]
 
@@ -70,7 +75,6 @@ class When[A: Any iso]
       _c1 = c1
       _c2 = c2
 
-
     fun _send(b: Behaviour, token: Promise[None]) =>
       var p = Promise[Bool]
       _c1.enqueue(b, p)
@@ -89,12 +93,13 @@ class When[A: Any iso]
 
     fun run(f: {(A, B): (A^, B^)} val, after: (Promise[None] | None) = None) =>
       var body = Behaviour(2, {()(f) =>
-        _c1.empty({(a: A)(_c1 = _c1, _c2 = _c2, f) =>
-          _c2.empty({(b: B)(a = consume a) =>
-            true
-            // (let a', let b') = f(consume a, consume b)
-            //_c2.fill(consume b)
-            //_c1.fill(consume a)
+        _c1.empty({ref (a: A)(_c1 = _c1, _c2 = _c2, f) =>
+          _c2.empty({ref (b: B)(a = Cell[A](consume a)) =>
+            try
+              (let a', let b') = f(a.extract()? , consume b)
+              _c1.fill(consume a')
+              _c2.fill(consume b')
+            end
           })
         })
       })
@@ -150,7 +155,7 @@ actor Cown[T: Any iso]
   be abort() =>
     _tentative = None
 
-  be empty(f: {(T)} val) =>
+  be empty(f: {ref (T)} iso) =>
     try
       f(_state.pop()?)
       _schedulable = true
@@ -185,4 +190,4 @@ actor Main
     after = When[U64Obj iso](c1).run({ (x: U64Obj iso) => x.inc(); consume x }, after)
     after = When[U64Obj iso](c1).run({ (x: U64Obj iso) => env.out.print(x.o.string()); consume x }, after)
 
-    //(When[BoolObj iso](c2).op_and[U64Obj iso](c1)).run({ (x: BoolObj, y: U64Obj) => env.out.print("HI") })
+    (When[BoolObj iso](c2).op_and[U64Obj iso](c1)).run({ (x: BoolObj iso, y: U64Obj iso) => env.out.print("HI"); (consume x, consume y) }, after)
