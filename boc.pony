@@ -17,7 +17,7 @@ primitive ACK
 */
 
 primitive Start
-  fun apply(f: {(Manager)}) => f(Manager)
+  fun apply(f: {(Manager)}) => f(Manager._create())
 
 actor Behaviour
   var _countdown: U64
@@ -72,7 +72,7 @@ actor Manager
   let _msgs: Array[(Array[CownI tag] val, Behaviour)]
   var _processing: Array[CownI tag]
 
-  new create() =>
+  new _create() =>
     _msgs = []
     _processing = []
 
@@ -148,7 +148,7 @@ actor Manager
         try
           _c1.empty({ref (a: A)(ffcell = recover iso [ fcell.pop()? ] end) =>
             try
-              _c1.fill(ffcell.pop()?(Manager, consume a))
+              _c1.fill(ffcell.pop()?(Manager._create(), consume a))
             end
           } iso)
         end
@@ -178,7 +178,7 @@ actor Manager
           _c2.empty({ref (b: B)(facell = recover iso [ (ffcell.pop()?, consume a) ] end, _c1 = _c1) =>
             try
               (let f, let a) = facell.pop()?
-              (let a', let b') = f(Manager, consume a, consume b)
+              (let a', let b') = f(Manager._create(), consume a, consume b)
               _c1.fill(consume a')
               _c2.fill(consume b')
             end
