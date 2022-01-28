@@ -55,7 +55,7 @@ class Phil
 
 actor Main
   new create(env: Env) =>
-    test1(env)
+    test2(env)
 
   fun test1(env: Env) =>
     var f1 = Cown[Fork iso](Fork(1))
@@ -80,16 +80,19 @@ actor Main
     // but we need to do the 2pc for the multimessage to ensure we don't create deadlocking orderings on the cown actor
     // message queueus
 
-    var after = When[U64Obj iso](c1).run({ (x: U64Obj iso) => env.out.print(x.o.string()); consume x })
-    after = When[U64Obj iso](c1).run({ (x: U64Obj iso) => x.inc(); env.out.print("inc'd"); consume x }, after)
-    after = When[U64Obj iso](c1).run({ (x: U64Obj iso) => env.out.print(x.o.string()); consume x }, after)
+    var after = When[U64Obj iso](c1).run({ (x: U64Obj iso) => env.out.print(x.o.string()); x})
+    after = When[U64Obj iso](c1).run({ (x: U64Obj iso) => x.inc(); env.out.print("inc'd"); x}, after)
+    after = When[U64Obj iso](c1).run({ (x: U64Obj iso) => env.out.print(x.o.string()); x}, after)
 
     var l = U64Obj(42)
     after = When[U64Obj iso](c1).run({(x: U64Obj iso)(l = consume l) =>
       env.out.print(l.o.string())
       l.inc()
       env.out.print(l.o.string())
-      consume x
+      x
     })
 
-    //(When[BoolObj iso](c2).op_and[U64Obj iso](c1)).run({ (x: BoolObj iso, y: U64Obj iso) => env.out.print("HI"); (consume x, consume y) }, after)
+    (When[BoolObj iso](c2).n[U64Obj iso](c1)).run({ (x: BoolObj iso, y: U64Obj iso) =>
+      env.out.print(if x.o then "true" else "false" end + " and " + y.o.string())
+      (consume x, consume y)
+    }, after)
