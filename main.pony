@@ -31,21 +31,21 @@ class Phil
     left = left'
     right = right'
 
-  fun iso eat(env: Env) =>
+  fun iso eat(m: Manager, env: Env) =>
     // we consume this so we need to get left and right out first, but these are tag so it's fine
     var l = left
     var r = right
 
     // Put the Phil ins a cell as we need to keep it as an iso to propogate forwards, but if we capture the phil
     // then it becomes a field of the object literal lambda
-    When[Fork iso](l).n[Fork iso](r).run({(left: Fork iso, right: Fork iso)(pcell = recover iso [ consume this ] end) =>
+    m.when[Fork iso](l).n[Fork iso](r).run({(manager: Manager, left: Fork iso, right: Fork iso)(pcell = recover iso [ consume this ] end) =>
       left.pick_up()
       right.pick_up()
       try
         var p = pcell.pop()?
         p.hunger = p.hunger - 1
         if p.hunger > 0 then
-          (consume p).eat(env)
+          (consume p).eat(m, env)
         else
           env.out.print("Phil " +  p.id.string() + " has finished eating")
         end
@@ -55,44 +55,53 @@ class Phil
 
 actor Main
   new create(env: Env) =>
-    test2(env)
+    test1(env)
 
   fun test1(env: Env) =>
-    var f1 = Cown[Fork iso](Fork(1))
-    var f2 = Cown[Fork iso](Fork(2))
-    var f3 = Cown[Fork iso](Fork(3))
-    var f4 = Cown[Fork iso](Fork(4))
-    var f5 = Cown[Fork iso](Fork(5))
+    Start({(m: Manager)(env) =>
+      env.out.print("started")
+      var f1 = Cown[Fork iso](Fork(1))
+      var f2 = Cown[Fork iso](Fork(2))
+      var f3 = Cown[Fork iso](Fork(3))
+      var f4 = Cown[Fork iso](Fork(4))
+      var f5 = Cown[Fork iso](Fork(5))
 
-    Phil(1, f1, f2).eat(env)
-    Phil(2, f2, f3).eat(env)
-    Phil(3, f3, f4).eat(env)
-    Phil(4, f4, f5).eat(env)
-    Phil(5, f5, f1).eat(env)
-
-  fun test2(env: Env) =>
-    var c1 = Cown[U64Obj iso](U64Obj(10))
-    var c2 = Cown[BoolObj iso](BoolObj(true))
-
-    // We have a token to order behaviours, because the the 2pc makes ordering difficult
-    // whilst trying to resolve one multimessage, any multimessage can fail and be reattempted
-    // but this happens inside of a number of different actors and so there are no causal orderings
-    // but we need to do the 2pc for the multimessage to ensure we don't create deadlocking orderings on the cown actor
-    // message queueus
-
-    var after = When[U64Obj iso](c1).run({ (x: U64Obj iso) => env.out.print(x.o.string()); x})
-    after = When[U64Obj iso](c1).run({ (x: U64Obj iso) => x.inc(); env.out.print("inc'd"); x}, after)
-    after = When[U64Obj iso](c1).run({ (x: U64Obj iso) => env.out.print(x.o.string()); x}, after)
-
-    var l = U64Obj(42)
-    after = When[U64Obj iso](c1).run({(x: U64Obj iso)(l = consume l) =>
-      env.out.print(l.o.string())
-      l.inc()
-      env.out.print(l.o.string())
-      x
+      Phil(1, f1, f2).eat(m, env)
+      Phil(2, f2, f3).eat(m, env)
+      Phil(3, f3, f4).eat(m, env)
+      Phil(4, f4, f5).eat(m, env)
+      Phil(5, f5, f1).eat(m, env)
     })
 
-    (When[BoolObj iso](c2).n[U64Obj iso](c1)).run({ (x: BoolObj iso, y: U64Obj iso) =>
-      env.out.print(if x.o then "true" else "false" end + " and " + y.o.string())
-      (consume x, consume y)
-    }, after)
+  fun test2(env: Env) =>
+    Start({(m: Manager)(env) =>
+      env.out.print("started")
+
+      var c1 = Cown[U64Obj iso](U64Obj(10))
+      var c2 = Cown[BoolObj iso](BoolObj(true))
+
+      // We have a token to order behaviours, because the the 2pc makes ordering difficult
+      // whilst trying to resolve one multimessage, any multimessage can fail and be reattempted
+      // but this happens inside of a number of different actors and so there are no causal orderings
+      // but we need to do the 2pc for the multimessage to ensure we don't create deadlocking orderings on the cown actor
+      // message queueus
+
+      m.when[U64Obj iso](c1).run({ (m: Manager, x: U64Obj iso) => env.out.print(x.o.string()); x})
+      m.when[U64Obj iso](c1).run({ (m: Manager, x: U64Obj iso) => x.inc(); env.out.print("inc'd"); x})
+      m.when[U64Obj iso](c1).run({ (m: Manager, x: U64Obj iso) => env.out.print(x.o.string()); x})
+
+      m.when[BoolObj iso](c2).run({ (m: Manager, z: BoolObj iso) => env.out.print("It's a bool!"); z})
+
+      var l = U64Obj(42)
+      m.when[U64Obj iso](c1).run({(m: Manager, x: U64Obj iso)(l = consume l) =>
+        env.out.print(l.o.string())
+        l.inc()
+        env.out.print(l.o.string())
+        x
+      })
+
+      m.when[BoolObj iso](c2).n[U64Obj iso](c1).run({ (m: Manager, x: BoolObj iso, y: U64Obj iso) =>
+        env.out.print(if x.o then "true" else "false" end + " and " + y.o.string())
+        (consume x, consume y)
+      })
+    })

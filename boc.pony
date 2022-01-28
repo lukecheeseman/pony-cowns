@@ -15,6 +15,10 @@ primitive ACK
    the body of the behaviours.
    Once the coutdown hits zero, the callback is called
 */
+
+primitive Start
+  fun apply(f: {(Manager)}) => f(Manager)
+
 actor Behaviour
   var _countdown: U64
   var _f: {ref ()} iso
@@ -28,6 +32,13 @@ actor Behaviour
     if _countdown == 0 then
       _f()
     end
+
+/*
+   FIXE: doing a 2pc multimessage is completely pointless if we don't have ordering of behaviours without tokens,
+   otherwise we may as well do the actor thing and chain the behaviour along the actors in order.
+
+   It does avoid us needing to create any order on the cowns, but wastes messages and processing time
+*/
 
 /* A when (and its related When<N>) serves as a transcation manager between cowns
    The when takes a cown and if further cowns are required by the 'n' method then constructs a when
@@ -46,84 +57,132 @@ actor Behaviour
    we got straigh ahead to trying to send the behaviour to all of the cowns. This
    is essentially 2pc.
 */
-class When[A: Any iso]
-  let _c1: Cown[A]
 
-  new create(c1: Cown[A]) =>
-    _c1 = c1
+primitive _ABORT
+  fun apply(m: Manager tag, cowns: Array[CownI tag] val, b: Behaviour) =>
+    var acks = Array[Promise[ACK]]
+    for cown in cowns.values() do
+      let ack = Promise[ACK]
+      acks.push(ack)
+      cown.abort(b, ack)
+    end
 
-  fun _send(b: Behaviour, token: Promise[TOKEN]) =>
-    let p = Promise[Response]
-    _c1.enqueue(b, p)
-    p.next[None]({(commit: Response)(token) =>
-      let p = Promise[ACK]
-      if commit() then
-        _c1.commit(p)
-        p.next[None]({(_: ACK) => token(TOKEN)})
-      else
-        _c1.abort(b, p)
-        p.next[None]({(_: ACK) => When[A](_c1)._send(b, token)})
-      end
+    Promises[ACK].join(acks.values()).next[None]({(_: Array[ACK] val) =>
+      m._abort(cowns, b)
     })
 
-  fun run(f: {ref (A): A^} iso, after: (Promise[TOKEN] | None) = None): Promise[TOKEN] =>
-    // We need to maintain the iso-ness of the function so we abuse an array to pop the function
-    // in and out of the array
-    let body = Behaviour(1, {ref ()(fcell = recover iso [ consume f ] end) =>
-      try
-        _c1.empty({ref (a: A)(ffcell = recover iso [ fcell.pop()? ] end) =>
-          try
-            _c1.fill(ffcell.pop()?(consume a))
-          end
-        } iso)
-      end
-    } iso)
-
-    let p = Promise[TOKEN]
-    match after
-      | None => _send(body, p)
-      | let after': Promise[TOKEN] => after'.next[None]({(_: TOKEN) => When[A](_c1)._send(body, p)})
+primitive _COMMIT
+  fun apply(m: Manager tag, cowns: Array[CownI tag] val) =>
+    var acks = Array[Promise[ACK]]
+    for cown in cowns.values() do
+      let ack = Promise[ACK]
+      acks.push(ack)
+      cown.commit(ack)
     end
-    p
 
-  fun n[B: Any iso](c2: Cown[B]): _When2[A, B] =>
-    _When2[A, B](_c1, c2)
+    Promises[ACK].join(acks.values()).next[None]({(_: Array[ACK] val) =>
+      m._commit(cowns)
+    })
 
-  // A when over 2 cowns
-  class _When2[A: Any iso, B: Any iso]
-    let _c1: Cown[A]
-    let _c2: Cown[B]
+actor Manager
+  let _msgs: Array[(Array[CownI tag] val, Behaviour)]
+  var _processing: Array[CownI tag]
 
-    new create(c1: Cown[A], c2: Cown[B]) =>
-      _c1 = c1
-      _c2 = c2
+  new create() =>
+    _msgs = []
+    _processing = []
 
-    fun _send(b: Behaviour, token: Promise[TOKEN]) =>
-      let p1 = Promise[Response]
-      let p2 = Promise[Response]
-      _c1.enqueue(b, p1)
-      _c2.enqueue(b, p2)
-      Promises[Response].join([p1; p2].values()).next[None]({(responses: Array[Response] val)(token) =>
-        let ack1 = Promise[ACK]
-        let ack2 = Promise[ACK]
+  be send(cowns: Array[CownI tag] val, b: Behaviour) =>
+    _msgs.unshift((cowns, b))
+    process()
+
+  fun ref _clear(cowns: Array[CownI tag] val) =>
+    for cown in cowns.values() do
+      try
+        _processing.delete(_processing.find(cown)?)?
+      end
+    end
+
+  be _abort(cowns: Array[CownI tag] val, b: Behaviour) =>
+    _msgs.push((cowns, b))
+    _clear(cowns)
+    process()
+
+  be _commit(cowns: Array[CownI tag] val) =>
+    _clear(cowns)
+    process()
+
+  fun ref process() =>
+    try
+      (let cowns, let b) = _msgs.pop()?
+
+      for c in cowns.values() do
+        if _processing.contains(c) then
+          _msgs.push((cowns, b))
+          return
+        end
+      end
+
+      _processing.append(cowns)
+
+      let responses = Array[Promise[Response]]
+      for cown in cowns.values() do
+        let response = Promise[Response]
+        cown.enqueue(b, response)
+        responses.push(response)
+      end
+      Promises[Response].join(responses.values()).next[None]({(responses: Array[Response] val)(m: Manager tag=this) =>
         for commit in responses.values() do
           if not commit() then
-            _c1.abort(b, ack1)
-            _c2.abort(b, ack2)
-            Promises[ACK].join([ack1; ack2].values()).next[None]({(_: Array[ACK] val) =>
-              _When2[A, B](_c1, _c2)._send(b, token)
-            })
+            _ABORT(m, cowns, b)
             return
           end
         end
-        _c1.commit(ack1)
-        _c2.commit(ack2)
-        Promises[ACK].join([ack1; ack2].values()).next[None]({(_: Array[ACK] val) =>
-          token(TOKEN)
-          })
-        })
+        _COMMIT(m, cowns)
+      })
+    end
 
-    fun run(f: {ref (A, B): (A^, B^)} iso, after: (Promise[TOKEN] | None) = None) =>
+  fun tag when[A: Any #send](c1: Cown[A]): _When[A] =>
+    _When[A](this, c1)
+
+  class _When[A: Any #send]
+    let _manager: Manager
+    let _c1: Cown[A]
+
+    new create(manager: Manager tag, c1: Cown[A]) =>
+      _manager = manager
+      _c1 = c1
+
+    fun run(f: {ref (Manager, A): A^} iso) =>
+      // We need to maintain the iso-ness of the function so we abuse an array to pop the function
+      // in and out of the array
+      let body = Behaviour(1, {ref ()(fcell = recover iso [ consume f ] end) =>
+        try
+          _c1.empty({ref (a: A)(ffcell = recover iso [ fcell.pop()? ] end) =>
+            try
+              _c1.fill(ffcell.pop()?(Manager, consume a))
+            end
+          } iso)
+        end
+      } iso)
+
+      _manager.send([_c1], body)
+
+    fun n[B: Any iso](c2: Cown[B]): _When2[A, B] =>
+      _When2[A, B](_manager, _c1, c2)
+
+  // A when over 2 cowns
+  class _When2[A: Any #send, B: Any #send]
+    let _manager: Manager
+    let _c1: Cown[A]
+    let _c2: Cown[B]
+
+    new create(manager: Manager, c1: Cown[A], c2: Cown[B]) =>
+      _manager = manager
+      _c1 = c1
+      _c2 = c2
+
+    fun run(f: {ref (Manager, A, B): (A^, B^)} iso) =>
       let body = Behaviour(2, {ref ()(fcell = recover iso [ consume f ] end) =>
         try
         _c1.empty({ref (a: A)(ffcell = recover iso [ fcell.pop()? ] end, _c2 = _c2) =>
@@ -131,7 +190,7 @@ class When[A: Any iso]
           _c2.empty({ref (b: B)(facell = recover iso [ (ffcell.pop()?, consume a) ] end, _c1 = _c1) =>
             try
               (let f, let a) = facell.pop()?
-              (let a', let b') = f(consume a, consume b)
+              (let a', let b') = f(Manager, consume a, consume b)
               _c1.fill(consume a')
               _c2.fill(consume b')
             end
@@ -140,12 +199,8 @@ class When[A: Any iso]
         } iso)
         end
       } iso)
-      let p = Promise[TOKEN]
-      match after
-        | None => _send(body, p)
-        | let after': Promise[TOKEN] => after'.next[None]({(_: TOKEN) => _When2[A, B](_c1, _c2)._send(body, p)})
-      end
-      p
+
+      _manager.send([_c1; _c2], body)
 
 /* A cown encapsulates a piece of state and a message queue.
 
@@ -156,7 +211,13 @@ class When[A: Any iso]
 
    msgs is the queue of waiting messages.
 */
-actor Cown[T: Any iso]
+
+interface CownI
+  be enqueue(msg: Behaviour tag, response: Promise[Response])
+  be commit(ack: Promise[ACK])
+  be abort(msg: Behaviour tag, ack: Promise[ACK])
+
+actor Cown[T: Any #send]
   // A triple of state, available and message queue
   let _state: Array[T]
   var _schedulable: Bool
