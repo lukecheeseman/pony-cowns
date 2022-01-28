@@ -141,14 +141,14 @@ actor Manager
       _manager = manager
       _c1 = c1
 
-    fun run(f: {ref (Manager, A): A^} iso) =>
+    fun run(f: {ref (A): A^} iso) =>
       // We need to maintain the iso-ness of the function so we abuse an array to pop the function
       // in and out of the array
       let body = Behaviour(1, {ref ()(fcell = recover iso [ consume f ] end) =>
         try
           _c1._empty({ref (a: A)(ffcell = recover iso [ fcell.pop()? ] end) =>
             try
-              _c1._fill(ffcell.pop()?(Manager._create(), consume a))
+              _c1._fill(ffcell.pop()?(consume a))
             end
           } iso)
         end
@@ -170,7 +170,7 @@ actor Manager
       _c1 = c1
       _c2 = c2
 
-    fun run(f: {ref (Manager, A, B): (A^, B^)} iso) =>
+    fun run(f: {ref (A, B): (A^, B^)} iso) =>
       let body = Behaviour(2, {ref ()(fcell = recover iso [ consume f ] end) =>
         try
         _c1._empty({ref (a: A)(ffcell = recover iso [ fcell.pop()? ] end, _c2 = _c2) =>
@@ -178,7 +178,7 @@ actor Manager
           _c2._empty({ref (b: B)(facell = recover iso [ (ffcell.pop()?, consume a) ] end, _c1 = _c1) =>
             try
               (let f, let a) = facell.pop()?
-              (let a', let b') = f(Manager._create(), consume a, consume b)
+              (let a', let b') = f(consume a, consume b)
               _c1._fill(consume a')
               _c2._fill(consume b')
             end

@@ -38,7 +38,7 @@ class Phil
 
     // Put the Phil ins a cell as we need to keep it as an iso to propogate forwards, but if we capture the phil
     // then it becomes a field of the object literal lambda
-    m.when[Fork iso](l).n[Fork iso](r).run({(manager: Manager, left: Fork iso, right: Fork iso)(pcell = recover iso [ consume this ] end) =>
+    m.when[Fork iso](l).n[Fork iso](r).run({(left: Fork iso, right: Fork iso)(pcell = recover iso [ consume this ] end) =>
       left.pick_up()
       right.pick_up()
       try
@@ -55,7 +55,7 @@ class Phil
 
 actor Main
   new create(env: Env) =>
-    test1(env)
+    test2(env)
 
   fun test1(env: Env) =>
     Start({(m: Manager)(env) =>
@@ -86,21 +86,21 @@ actor Main
       // but we need to do the 2pc for the multimessage to ensure we don't create deadlocking orderings on the cown actor
       // message queueus
 
-      m.when[U64Obj iso](c1).run({ (m: Manager, x: U64Obj iso) => env.out.print(x.o.string()); x})
-      m.when[U64Obj iso](c1).run({ (m: Manager, x: U64Obj iso) => x.inc(); env.out.print("inc'd"); x})
-      m.when[U64Obj iso](c1).run({ (m: Manager, x: U64Obj iso) => env.out.print(x.o.string()); x})
+      m.when[U64Obj iso](c1).run({ (x: U64Obj iso) => env.out.print(x.o.string()); x})
+      m.when[U64Obj iso](c1).run({ (x: U64Obj iso) => x.inc(); env.out.print("inc'd"); x})
+      m.when[U64Obj iso](c1).run({ (x: U64Obj iso) => env.out.print(x.o.string()); x})
 
-      m.when[BoolObj iso](c2).run({ (m: Manager, z: BoolObj iso) => env.out.print("It's a bool!"); z})
+      m.when[BoolObj iso](c2).run({ (z: BoolObj iso) => env.out.print("It's a bool!"); z})
 
       var l = U64Obj(42)
-      m.when[U64Obj iso](c1).run({(m: Manager, x: U64Obj iso)(l = consume l) =>
+      m.when[U64Obj iso](c1).run({(x: U64Obj iso)(l = consume l) =>
         env.out.print(l.o.string())
         l.inc()
         env.out.print(l.o.string())
         x
       })
 
-      m.when[BoolObj iso](c2).n[U64Obj iso](c1).run({ (m: Manager, x: BoolObj iso, y: U64Obj iso) =>
+      m.when[BoolObj iso](c2).n[U64Obj iso](c1).run({ (x: BoolObj iso, y: U64Obj iso) =>
         env.out.print(if x.o then "true" else "false" end + " and " + y.o.string())
         (consume x, consume y)
       })
