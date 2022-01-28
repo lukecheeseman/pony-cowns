@@ -2,14 +2,21 @@
 
 use "promises"
 
+// Tokens for voting on commit
 primitive YES fun apply(): Bool => true
 primitive NO fun apply(): Bool => false
 type Response is (YES | NO)
 
+// Token for ordering behaviours
 primitive TOKEN
 
+// Token for acking commit/abort
 primitive ACK
 
+/* A behaviour is an actor that encapsulates a coutdown and a callback that is
+   the body of the behaviours.
+   Once the coutdown hits zero, the callback is called
+*/
 actor Behaviour
   var _countdown: U64
   var _f: {ref ()} iso
@@ -24,6 +31,23 @@ actor Behaviour
       _f()
     end
 
+/* A when (and its related When<N>) serves as a transcation manager between cowns
+   The when takes a cown and if further cowns are required by the 'n' method then constructs a when
+   which managers 1 more cown.
+
+   When the run builder is called, the method constructs a sequence of nested lambdas that
+   each "partially apply" the provided lambda that takes all the cowns.
+
+   We know that at the point of running the behaviour and emptying the state, that each cown has
+   reserved itself for this behaviour.
+
+   The final layer calls the user provided lambda with all the pieces of state and then
+   returns the state from the callback to each cown as necessary.
+
+   If a token for ordering is provided we wait until the token is fulfilled, otherwise
+   we got straigh ahead to trying to send the behaviour to all of the cowns. This
+   is essentially 2pc.
+*/
 class When[A: Any iso]
   var _c1: Cown[A]
 
@@ -45,6 +69,8 @@ class When[A: Any iso]
     })
 
   fun run(f: {ref (A): A^} iso, after: (Promise[TOKEN] | None) = None): Promise[TOKEN] =>
+    // We need to maintain the iso-ness of the function so we abuse an array to pop the function
+    // in and out of the array
     var body = Behaviour(1, {ref ()(fcell = recover iso [ consume f ] end) =>
       try
         _c1.empty({ref (a: A)(ffcell = recover iso [ fcell.pop()? ] end) =>
@@ -62,9 +88,10 @@ class When[A: Any iso]
     end
     p
 
-  fun op_and[B: Any iso](c2: Cown[B]): _When2[A, B] =>
+  fun n[B: Any iso](c2: Cown[B]): _When2[A, B] =>
     _When2[A, B](_c1, c2)
 
+  // A when over 2 cowns
   class _When2[A: Any iso, B: Any iso]
     var _c1: Cown[A]
     var _c2: Cown[B]
@@ -122,22 +149,33 @@ class When[A: Any iso]
       end
       p
 
-actor Cown[T: Any iso]
-  var _state: Array[T]
+/* A cown encapsulates a piece of state and a message queue.
 
+   state is one-place buffer - this allows us to more easily maintain the iso-ness of the contents
+   so that we can send it to behaviours.
+
+   schedulable is used to decide if this cown has been reserved for/or is in use by some behaviour
+
+   msgs is the queue of waiting messages.
+*/
+actor Cown[T: Any iso]
+  // A triple of state, available and message queue
+  var _state: Array[T]
   var _schedulable: Bool
   var _msgs: Array[Behaviour tag]
+
+  // This is None if the cown is not involved in a transaction
+  // Otherwise it is the message the cown is waiting to commit
   var _tentative: (Behaviour tag | None)
-  var _tentative_id: U64
 
   new create(state: T) =>
     _state = [ consume state ]
-
     _schedulable = true
     _msgs = []
-    _tentative = None
-    _tentative_id = 0
 
+    _tentative = None
+
+  // Try to process a waiting message, if successful reserve this cown
   be process() =>
     if not _schedulable then
       return
@@ -148,15 +186,17 @@ actor Cown[T: Any iso]
       _schedulable = false
     end
 
+  // Enter a transcation, vote yes if this cown is not already part
+  // of some transaction
   be enqueue(msg: Behaviour tag, response: Promise[Response]) =>
-    match _tentative
-      | None =>
-        _tentative = msg
-        response(YES)
+    if _tentative is None then
+      _tentative = msg
+      response(YES)
     else
       response(NO)
     end
 
+  // Add the pending message to the message queue
   be commit(ack: Promise[ACK]) =>
     match (_tentative = None)
       | let msg: Behaviour tag =>
@@ -165,17 +205,22 @@ actor Cown[T: Any iso]
           process()
     end
 
+  // Abort a transaction. If this cown was waiting to commit the pending
+  // message, also throw the message away
   be abort(msg: Behaviour tag, ack: Promise[ACK]) =>
     if _tentative is msg then
       _tentative = None
     end
     ack(ACK)
 
+  // A behaviour is gaining access to this cowns state, send the behaviour
+  // the state, leaving this cown empty
   be empty(f: {ref (T)} iso) =>
     try
       f(_state.pop()?)
     end
 
+  // A behaviour is returning some state to this cown
   be fill(state: T) =>
     _state.push(consume state)
     _schedulable = true

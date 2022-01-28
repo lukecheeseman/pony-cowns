@@ -38,7 +38,7 @@ class Phil
 
     // Put the Phil ins a cell as we need to keep it as an iso to propogate forwards, but if we capture the phil
     // then it becomes a field of the object literal lambda
-    When[Fork iso](l).op_and[Fork iso](r).run({(left: Fork iso, right: Fork iso)(pcell = recover iso [ consume this ] end) =>
+    When[Fork iso](l).n[Fork iso](r).run({(left: Fork iso, right: Fork iso)(pcell = recover iso [ consume this ] end) =>
       left.pick_up()
       right.pick_up()
       try
