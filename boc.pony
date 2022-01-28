@@ -1,5 +1,3 @@
-
-
 use "promises"
 
 // Tokens for voting on commit
