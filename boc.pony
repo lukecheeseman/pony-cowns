@@ -48,7 +48,7 @@ primitive _ABORT
     for cown in cowns.values() do
       let ack = Promise[ACK]
       acks.push(ack)
-      cown.abort(b, ack)
+      cown._abort(b, ack)
     end
 
     Promises[ACK].join(acks.values()).next[None]({(_: Array[ACK] val) =>
@@ -61,7 +61,7 @@ primitive _COMMIT
     for cown in cowns.values() do
       let ack = Promise[ACK]
       acks.push(ack)
-      cown.commit(ack)
+      cown._commit(ack)
     end
 
     Promises[ACK].join(acks.values()).next[None]({(_: Array[ACK] val) =>
@@ -76,9 +76,9 @@ actor Manager
     _msgs = []
     _processing = []
 
-  be send(cowns: Array[CownI tag] val, b: Behaviour) =>
+  be _send(cowns: Array[CownI tag] val, b: Behaviour) =>
     _msgs.unshift((cowns, b))
-    process()
+    _process()
 
   fun ref _clear(cowns: Array[CownI tag] val) =>
     for cown in cowns.values() do
@@ -91,15 +91,15 @@ actor Manager
   be _abort(cowns: Array[CownI tag] val, b: Behaviour) =>
     _msgs.push((cowns, b))
     _clear(cowns)
-    process()
+    _process()
 
   be _commit(cowns: Array[CownI tag] val) =>
     _clear(cowns)
-    process()
+    _process()
 
   // Attempt to process a message, abort if we overlap with any cown that is already
   // being processed
-  fun ref process() =>
+  fun ref _process() =>
     try
       (let cowns, let b) = _msgs.pop()?
 
@@ -116,7 +116,7 @@ actor Manager
       let responses = Array[Promise[Response]]
       for cown in cowns.values() do
         let response = Promise[Response]
-        cown.enqueue(b, response)
+        cown._enqueue(b, response)
         responses.push(response)
       end
       Promises[Response].join(responses.values()).next[None]({(responses: Array[Response] val)(m: Manager tag=this) =>
@@ -131,13 +131,13 @@ actor Manager
     end
 
   fun tag when[A: Any #send](c1: Cown[A]): _When[A] =>
-    _When[A](this, c1)
+    _When[A]._create(this, c1)
 
   class _When[A: Any #send]
     let _manager: Manager
     let _c1: Cown[A]
 
-    new create(manager: Manager tag, c1: Cown[A]) =>
+    new _create(manager: Manager tag, c1: Cown[A]) =>
       _manager = manager
       _c1 = c1
 
@@ -146,18 +146,18 @@ actor Manager
       // in and out of the array
       let body = Behaviour(1, {ref ()(fcell = recover iso [ consume f ] end) =>
         try
-          _c1.empty({ref (a: A)(ffcell = recover iso [ fcell.pop()? ] end) =>
+          _c1._empty({ref (a: A)(ffcell = recover iso [ fcell.pop()? ] end) =>
             try
-              _c1.fill(ffcell.pop()?(Manager._create(), consume a))
+              _c1._fill(ffcell.pop()?(Manager._create(), consume a))
             end
           } iso)
         end
       } iso)
 
-      _manager.send([_c1], body)
+      _manager._send([_c1], body)
 
     fun n[B: Any iso](c2: Cown[B]): _When2[A, B] =>
-      _When2[A, B](_manager, _c1, c2)
+      _When2[A, B]._create(_manager, _c1, c2)
 
   // A when over 2 cowns
   class _When2[A: Any #send, B: Any #send]
@@ -165,7 +165,7 @@ actor Manager
     let _c1: Cown[A]
     let _c2: Cown[B]
 
-    new create(manager: Manager, c1: Cown[A], c2: Cown[B]) =>
+    new _create(manager: Manager, c1: Cown[A], c2: Cown[B]) =>
       _manager = manager
       _c1 = c1
       _c2 = c2
@@ -173,14 +173,14 @@ actor Manager
     fun run(f: {ref (Manager, A, B): (A^, B^)} iso) =>
       let body = Behaviour(2, {ref ()(fcell = recover iso [ consume f ] end) =>
         try
-        _c1.empty({ref (a: A)(ffcell = recover iso [ fcell.pop()? ] end, _c2 = _c2) =>
+        _c1._empty({ref (a: A)(ffcell = recover iso [ fcell.pop()? ] end, _c2 = _c2) =>
           try
-          _c2.empty({ref (b: B)(facell = recover iso [ (ffcell.pop()?, consume a) ] end, _c1 = _c1) =>
+          _c2._empty({ref (b: B)(facell = recover iso [ (ffcell.pop()?, consume a) ] end, _c1 = _c1) =>
             try
               (let f, let a) = facell.pop()?
               (let a', let b') = f(Manager._create(), consume a, consume b)
-              _c1.fill(consume a')
-              _c2.fill(consume b')
+              _c1._fill(consume a')
+              _c2._fill(consume b')
             end
           } iso)
           end
@@ -188,7 +188,7 @@ actor Manager
         end
       } iso)
 
-      _manager.send([_c1; _c2], body)
+      _manager._send([_c1; _c2], body)
 
 /* A cown encapsulates a piece of state and a message queue.
 
@@ -201,9 +201,9 @@ actor Manager
 */
 
 interface CownI
-  be enqueue(msg: Behaviour tag, response: Promise[Response])
-  be commit(ack: Promise[ACK])
-  be abort(msg: Behaviour tag, ack: Promise[ACK])
+  be _enqueue(msg: Behaviour tag, response: Promise[Response])
+  be _commit(ack: Promise[ACK])
+  be _abort(msg: Behaviour tag, ack: Promise[ACK])
 
 actor Cown[T: Any #send]
   // A triple of state, available and message queue
@@ -223,7 +223,7 @@ actor Cown[T: Any #send]
     _tentative = None
 
   // Try to process a waiting message, if successful reserve this cown
-  be process() =>
+  be _process() =>
     if not _schedulable then
       return
     end
@@ -235,7 +235,7 @@ actor Cown[T: Any #send]
 
   // Enter a transcation, vote yes if this cown is not already part
   // of some transaction
-  be enqueue(msg: Behaviour tag, response: Promise[Response]) =>
+  be _enqueue(msg: Behaviour tag, response: Promise[Response]) =>
     if _tentative is None then
       _tentative = msg
       response(YES)
@@ -244,17 +244,17 @@ actor Cown[T: Any #send]
     end
 
   // Add the pending message to the message queue
-  be commit(ack: Promise[ACK]) =>
+  be _commit(ack: Promise[ACK]) =>
     match (_tentative = None)
       | let msg: Behaviour tag =>
           _msgs.unshift(msg)
           ack(ACK)
-          process()
+          _process()
     end
 
   // Abort a transaction. If this cown was waiting to commit the pending
   // message, also throw the message away
-  be abort(msg: Behaviour tag, ack: Promise[ACK]) =>
+  be _abort(msg: Behaviour tag, ack: Promise[ACK]) =>
     if _tentative is msg then
       _tentative = None
     end
@@ -262,13 +262,13 @@ actor Cown[T: Any #send]
 
   // A behaviour is gaining access to this cowns state, send the behaviour
   // the state, leaving this cown empty
-  be empty(f: {ref (T)} iso) =>
+  be _empty(f: {ref (T)} iso) =>
     try
       f(_state.pop()?)
     end
 
   // A behaviour is returning some state to this cown
-  be fill(state: T) =>
+  be _fill(state: T) =>
     _state.push(consume state)
     _schedulable = true
-    process()
+    _process()
