@@ -49,16 +49,16 @@ actor Behaviour
    is essentially 2pc.
 */
 class When[A: Any iso]
-  var _c1: Cown[A]
+  let _c1: Cown[A]
 
   new create(c1: Cown[A]) =>
     _c1 = c1
 
   fun _send(b: Behaviour, token: Promise[TOKEN]) =>
-    var p = Promise[Response]
+    let p = Promise[Response]
     _c1.enqueue(b, p)
     p.next[None]({(commit: Response)(token) =>
-      var p = Promise[ACK]
+      let p = Promise[ACK]
       if commit() then
         _c1.commit(p)
         p.next[None]({(_: ACK) => token(TOKEN)})
@@ -71,7 +71,7 @@ class When[A: Any iso]
   fun run(f: {ref (A): A^} iso, after: (Promise[TOKEN] | None) = None): Promise[TOKEN] =>
     // We need to maintain the iso-ness of the function so we abuse an array to pop the function
     // in and out of the array
-    var body = Behaviour(1, {ref ()(fcell = recover iso [ consume f ] end) =>
+    let body = Behaviour(1, {ref ()(fcell = recover iso [ consume f ] end) =>
       try
         _c1.empty({ref (a: A)(ffcell = recover iso [ fcell.pop()? ] end) =>
           try
@@ -81,7 +81,7 @@ class When[A: Any iso]
       end
     } iso)
 
-    var p = Promise[TOKEN]
+    let p = Promise[TOKEN]
     match after
       | None => _send(body, p)
       | let after': Promise[TOKEN] => after'.next[None]({(_: TOKEN) => When[A](_c1)._send(body, p)})
@@ -93,21 +93,21 @@ class When[A: Any iso]
 
   // A when over 2 cowns
   class _When2[A: Any iso, B: Any iso]
-    var _c1: Cown[A]
-    var _c2: Cown[B]
+    let _c1: Cown[A]
+    let _c2: Cown[B]
 
     new create(c1: Cown[A], c2: Cown[B]) =>
       _c1 = c1
       _c2 = c2
 
     fun _send(b: Behaviour, token: Promise[TOKEN]) =>
-      var p1 = Promise[Response]
-      var p2 = Promise[Response]
+      let p1 = Promise[Response]
+      let p2 = Promise[Response]
       _c1.enqueue(b, p1)
       _c2.enqueue(b, p2)
       Promises[Response].join([p1; p2].values()).next[None]({(responses: Array[Response] val)(token) =>
-        var ack1 = Promise[ACK]
-        var ack2 = Promise[ACK]
+        let ack1 = Promise[ACK]
+        let ack2 = Promise[ACK]
         for commit in responses.values() do
           if not commit() then
             _c1.abort(b, ack1)
@@ -126,7 +126,7 @@ class When[A: Any iso]
         })
 
     fun run(f: {ref (A, B): (A^, B^)} iso, after: (Promise[TOKEN] | None) = None) =>
-      var body = Behaviour(2, {ref ()(fcell = recover iso [ consume f ] end) =>
+      let body = Behaviour(2, {ref ()(fcell = recover iso [ consume f ] end) =>
         try
         _c1.empty({ref (a: A)(ffcell = recover iso [ fcell.pop()? ] end, _c2 = _c2) =>
           try
@@ -142,7 +142,7 @@ class When[A: Any iso]
         } iso)
         end
       } iso)
-      var p = Promise[TOKEN]
+      let p = Promise[TOKEN]
       match after
         | None => _send(body, p)
         | let after': Promise[TOKEN] => after'.next[None]({(_: TOKEN) => _When2[A, B](_c1, _c2)._send(body, p)})
@@ -160,9 +160,9 @@ class When[A: Any iso]
 */
 actor Cown[T: Any iso]
   // A triple of state, available and message queue
-  var _state: Array[T]
+  let _state: Array[T]
   var _schedulable: Bool
-  var _msgs: Array[Behaviour tag]
+  let _msgs: Array[Behaviour tag]
 
   // This is None if the cown is not involved in a transaction
   // Otherwise it is the message the cown is waiting to commit
