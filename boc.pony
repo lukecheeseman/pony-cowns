@@ -34,28 +34,12 @@ actor Behaviour
     end
 
 /*
-   FIXE: doing a 2pc multimessage is completely pointless if we don't have ordering of behaviours without tokens,
-   otherwise we may as well do the actor thing and chain the behaviour along the actors in order.
-
-   It does avoid us needing to create any order on the cowns, but wastes messages and processing time
-*/
-
-/* A when (and its related When<N>) serves as a transcation manager between cowns
-   The when takes a cown and if further cowns are required by the 'n' method then constructs a when
-   which managers 1 more cown.
-
-   When the run builder is called, the method constructs a sequence of nested lambdas that
-   each "partially apply" the provided lambda that takes all the cowns.
+   A transaction manager creates a when which encapsulates a set of cowns to rendezvous with
+   and the callback to run which peels of each cown until all states have been acquired and then
+   runs the user provided callback
 
    We know that at the point of running the behaviour and emptying the state, that each cown has
    reserved itself for this behaviour.
-
-   The final layer calls the user provided lambda with all the pieces of state and then
-   returns the state from the callback to each cown as necessary.
-
-   If a token for ordering is provided we wait until the token is fulfilled, otherwise
-   we got straigh ahead to trying to send the behaviour to all of the cowns. This
-   is essentially 2pc.
 */
 
 primitive _ABORT
@@ -103,6 +87,7 @@ actor Manager
       end
     end
 
+  // Log the result of a transaction and clear the cowns from processing
   be _abort(cowns: Array[CownI tag] val, b: Behaviour) =>
     _msgs.push((cowns, b))
     _clear(cowns)
@@ -112,6 +97,8 @@ actor Manager
     _clear(cowns)
     process()
 
+  // Attempt to process a message, abort if we overlap with any cown that is already
+  // being processed
   fun ref process() =>
     try
       (let cowns, let b) = _msgs.pop()?
@@ -125,6 +112,7 @@ actor Manager
 
       _processing.append(cowns)
 
+      // Send all involved cowns the behaviour and wait of their outcomes
       let responses = Array[Promise[Response]]
       for cown in cowns.values() do
         let response = Promise[Response]
