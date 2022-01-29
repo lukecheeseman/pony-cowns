@@ -42,31 +42,8 @@ actor Behaviour
    reserved itself for this behaviour.
 */
 
-primitive _ABORT
-  fun apply(m: Manager tag, cowns: Array[CownI tag] val, b: Behaviour) =>
-    var acks = Array[Promise[ACK]]
-    for cown in cowns.values() do
-      let ack = Promise[ACK]
-      acks.push(ack)
-      cown._abort(b, ack)
-    end
-
-    Promises[ACK].join(acks.values()).next[None]({(_: Array[ACK] val) =>
-      m._abort(cowns, b)
-    })
-
 primitive _COMMIT
-  fun apply(m: Manager tag, cowns: Array[CownI tag] val) =>
-    var acks = Array[Promise[ACK]]
-    for cown in cowns.values() do
-      let ack = Promise[ACK]
-      acks.push(ack)
-      cown._commit(ack)
-    end
 
-    Promises[ACK].join(acks.values()).next[None]({(_: Array[ACK] val) =>
-      m._commit(cowns)
-    })
 
 actor Manager
   let _msgs: Array[(Array[CownI tag] val, Behaviour)]
@@ -97,6 +74,30 @@ actor Manager
     _clear(cowns)
     _process()
 
+  fun tag _send_abort(cowns: Array[CownI tag] val, b: Behaviour) =>
+    var acks = Array[Promise[ACK]]
+    for cown in cowns.values() do
+      let ack = Promise[ACK]
+      acks.push(ack)
+      cown._abort(b, ack)
+    end
+
+    Promises[ACK].join(acks.values()).next[None]({(_: Array[ACK] val)(m: Manager tag = this) =>
+      m._abort(cowns, b)
+    })
+
+  fun tag _send_commit(cowns: Array[CownI tag] val) =>
+    var acks = Array[Promise[ACK]]
+    for cown in cowns.values() do
+      let ack = Promise[ACK]
+      acks.push(ack)
+      cown._commit(ack)
+    end
+
+    Promises[ACK].join(acks.values()).next[None]({(_: Array[ACK] val)(m: Manager tag = this) =>
+      m._commit(cowns)
+    })
+
   // Attempt to process a message, abort if we overlap with any cown that is already
   // being processed
   fun ref _process() =>
@@ -122,11 +123,11 @@ actor Manager
       Promises[Response].join(responses.values()).next[None]({(responses: Array[Response] val)(m: Manager tag=this) =>
         for commit in responses.values() do
           if not commit() then
-            _ABORT(m, cowns, b)
+            m._send_abort(cowns, b)
             return
           end
         end
-        _COMMIT(m, cowns)
+        m._send_commit(cowns)
       })
     end
 
