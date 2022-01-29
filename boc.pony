@@ -5,9 +5,6 @@ primitive YES fun apply(): Bool => true
 primitive NO fun apply(): Bool => false
 type Response is (YES | NO)
 
-// Token for ordering behaviours
-primitive TOKEN
-
 // Token for acking commit/abort
 primitive ACK
 
