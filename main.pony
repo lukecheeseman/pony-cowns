@@ -55,7 +55,7 @@ class Phil
 
 actor Main
   new create(env: Env) =>
-    test2(env)
+    test3(env)
 
   fun test1(env: Env) =>
     Start({(m: Manager)(env) =>
@@ -103,5 +103,32 @@ actor Main
       m.when[BoolObj iso](c2).n[U64Obj iso](c1).run({ (x: BoolObj iso, y: U64Obj iso) =>
         env.out.print(if x.o then "true" else "false" end + " and " + y.o.string())
         (consume x, consume y)
+      })
+    })
+
+  fun test3(env: Env) =>
+    Start({(m: Manager)(env) =>
+      // Either print can happen first
+      var c1 = Cown[U64Obj iso](U64Obj(10))
+      var c2 = Cown[U64Obj iso](U64Obj(10))
+      var c3 = Cown[U64Obj iso](U64Obj(10))
+
+      m.when[U64Obj iso](c1).run({ (x: U64Obj iso) (env)=>
+        m.when[U64Obj iso](c3).run({ (x: U64Obj iso) =>
+          env.out.print("{c1, c3}")
+          env.out.print(x.o.string())
+          x.inc()
+          x
+        })
+        x
+      })
+
+      m.when[U64Obj iso](c2).run({ (x: U64Obj iso) (env)=>
+        m.when[U64Obj iso](c3).run({ (x: U64Obj iso) =>
+          env.out.print("{c2, c3}")
+          env.out.print(x.o.string())
+          x
+        })
+        x
       })
     })
