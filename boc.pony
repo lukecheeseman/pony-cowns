@@ -42,9 +42,6 @@ actor Behaviour
    reserved itself for this behaviour.
 */
 
-primitive _COMMIT
-
-
 actor Manager
   let _msgs: Array[(Array[CownI tag] val, Behaviour)]
   var _processing: Array[CownI tag]
