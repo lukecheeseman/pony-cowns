@@ -60,6 +60,7 @@ actor Manager
 
   // Log the result of a transaction and clear the cowns from processing
   be _abort(cowns: Array[CownI tag] val, b: Behaviour) =>
+    // The send failed so push the message back on the front of the queue and try again
     _msgs.push((cowns, b))
     _clear(cowns)
     _process()

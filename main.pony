@@ -38,7 +38,7 @@ class Phil
 
     // Put the Phil ins a cell as we need to keep it as an iso to propogate forwards, but if we capture the phil
     // then it becomes a field of the object literal lambda
-    m.when[Fork iso](l).n[Fork iso](r).run({(left: Fork iso, right: Fork iso)(pcell = recover iso [ consume this ] end) =>
+    m.when[Fork iso](l).n[Fork iso](r).run({(left, right)(pcell = recover iso [ consume this ] end) =>
       left.pick_up()
       right.pick_up()
       try
@@ -86,21 +86,21 @@ actor Main
       // but we need to do the 2pc for the multimessage to ensure we don't create deadlocking orderings on the cown actor
       // message queueus
 
-      m.when[U64Obj iso](c1).run({ (x: U64Obj iso) => env.out.print(x.o.string()); x})
-      m.when[U64Obj iso](c1).run({ (x: U64Obj iso) => x.inc(); env.out.print("inc'd"); x})
-      m.when[U64Obj iso](c1).run({ (x: U64Obj iso) => env.out.print(x.o.string()); x})
+      m.when[U64Obj iso](c1).run({(x) => env.out.print(x.o.string()); x})
+      m.when[U64Obj iso](c1).run({(x) => x.inc(); env.out.print("inc'd"); x})
+      m.when[U64Obj iso](c1).run({(x) => env.out.print(x.o.string()); x})
 
-      m.when[BoolObj iso](c2).run({ (z: BoolObj iso) => env.out.print("It's a bool!"); z})
+      m.when[BoolObj iso](c2).run({(z) => env.out.print("It's a bool!"); z})
 
       var l = U64Obj(42)
-      m.when[U64Obj iso](c1).run({(x: U64Obj iso)(l = consume l) =>
+      m.when[U64Obj iso](c1).run({(x)(l = consume l) =>
         env.out.print(l.o.string())
         l.inc()
         env.out.print(l.o.string())
         x
       })
 
-      m.when[BoolObj iso](c2).n[U64Obj iso](c1).run({ (x: BoolObj iso, y: U64Obj iso) =>
+      m.when[BoolObj iso](c2).n[U64Obj iso](c1).run({ (x, y) =>
         env.out.print(if x.o then "true" else "false" end + " and " + y.o.string())
         (consume x, consume y)
       })
@@ -113,8 +113,8 @@ actor Main
       var c2 = Cown[U64Obj iso](U64Obj(10))
       var c3 = Cown[U64Obj iso](U64Obj(10))
 
-      m.when[U64Obj iso](c1).run({ (x: U64Obj iso) (env)=>
-        m.when[U64Obj iso](c3).run({ (x: U64Obj iso) =>
+      m.when[U64Obj iso](c1).run({(x)(env) =>
+        m.when[U64Obj iso](c3).run({(x) =>
           env.out.print("{c1, c3}")
           env.out.print(x.o.string())
           x.inc()
@@ -123,8 +123,8 @@ actor Main
         x
       })
 
-      m.when[U64Obj iso](c2).run({ (x: U64Obj iso) (env)=>
-        m.when[U64Obj iso](c3).run({ (x: U64Obj iso) =>
+      m.when[U64Obj iso](c2).run({(x) (env)=>
+        m.when[U64Obj iso](c3).run({(x) =>
           env.out.print("{c2, c3}")
           env.out.print(x.o.string())
           x
