@@ -1,12 +1,12 @@
 use "promises"
 
 // Tokens for voting on commit
-primitive YES fun apply(): Bool => true
-primitive NO fun apply(): Bool => false
-type Response is (YES | NO)
+primitive _YES fun apply(): Bool => true
+primitive _NO fun apply(): Bool => false
+type _Response is (_YES | _NO)
 
 // Token for acking commit/abort
-primitive ACK
+primitive _ACK
 
 /* A behaviour is an actor that encapsulates a coutdown and a callback that is
    the body of the behaviours.
@@ -70,26 +70,26 @@ actor Manager
     _process()
 
   fun tag _send_abort(cowns: Array[CownI tag] val, b: Behaviour) =>
-    var acks = Array[Promise[ACK]]
+    var acks = Array[Promise[_ACK]]
     for cown in cowns.values() do
-      let ack = Promise[ACK]
+      let ack = Promise[_ACK]
       acks.push(ack)
       cown._abort(b, ack)
     end
 
-    Promises[ACK].join(acks.values()).next[None]({(_: Array[ACK] val)(m: Manager tag = this) =>
+    Promises[_ACK].join(acks.values()).next[None]({(_: Array[_ACK] val)(m: Manager tag = this) =>
       m._abort(cowns, b)
     })
 
   fun tag _send_commit(cowns: Array[CownI tag] val) =>
-    var acks = Array[Promise[ACK]]
+    var acks = Array[Promise[_ACK]]
     for cown in cowns.values() do
-      let ack = Promise[ACK]
+      let ack = Promise[_ACK]
       acks.push(ack)
       cown._commit(ack)
     end
 
-    Promises[ACK].join(acks.values()).next[None]({(_: Array[ACK] val)(m: Manager tag = this) =>
+    Promises[_ACK].join(acks.values()).next[None]({(_: Array[_ACK] val)(m: Manager tag = this) =>
       m._commit(cowns)
     })
 
@@ -109,13 +109,13 @@ actor Manager
       _processing.append(cowns)
 
       // Send all involved cowns the behaviour and wait of their outcomes
-      let responses = Array[Promise[Response]]
+      let responses = Array[Promise[_Response]]
       for cown in cowns.values() do
-        let response = Promise[Response]
+        let response = Promise[_Response]
         cown._enqueue(b, response)
         responses.push(response)
       end
-      Promises[Response].join(responses.values()).next[None]({(responses: Array[Response] val)(m: Manager tag=this) =>
+      Promises[_Response].join(responses.values()).next[None]({(responses: Array[_Response] val)(m: Manager tag=this) =>
         for commit in responses.values() do
           if not commit() then
             m._send_abort(cowns, b)
@@ -197,9 +197,9 @@ actor Manager
 */
 
 interface CownI
-  be _enqueue(msg: Behaviour tag, response: Promise[Response])
-  be _commit(ack: Promise[ACK])
-  be _abort(msg: Behaviour tag, ack: Promise[ACK])
+  be _enqueue(msg: Behaviour tag, response: Promise[_Response])
+  be _commit(ack: Promise[_ACK])
+  be _abort(msg: Behaviour tag, ack: Promise[_ACK])
 
 actor Cown[T: Any #send]
   // A triple of state, available and message queue
@@ -231,30 +231,30 @@ actor Cown[T: Any #send]
 
   // Enter a transcation, vote yes if this cown is not already part
   // of some transaction
-  be _enqueue(msg: Behaviour tag, response: Promise[Response]) =>
+  be _enqueue(msg: Behaviour tag, response: Promise[_Response]) =>
     if _tentative is None then
       _tentative = msg
-      response(YES)
+      response(_YES)
     else
-      response(NO)
+      response(_NO)
     end
 
   // Add the pending message to the message queue
-  be _commit(ack: Promise[ACK]) =>
+  be _commit(ack: Promise[_ACK]) =>
     match (_tentative = None)
       | let msg: Behaviour tag =>
           _msgs.unshift(msg)
-          ack(ACK)
+          ack(_ACK)
           _process()
     end
 
   // Abort a transaction. If this cown was waiting to commit the pending
   // message, also throw the message away
-  be _abort(msg: Behaviour tag, ack: Promise[ACK]) =>
+  be _abort(msg: Behaviour tag, ack: Promise[_ACK]) =>
     if _tentative is msg then
       _tentative = None
     end
-    ack(ACK)
+    ack(_ACK)
 
   // A behaviour is gaining access to this cowns state, send the behaviour
   // the state, leaving this cown empty
