@@ -80,12 +80,6 @@ actor Main
       var c1 = Cown[U64Obj iso](U64Obj(10))
       var c2 = Cown[BoolObj iso](BoolObj(true))
 
-      // We have a token to order behaviours, because the the 2pc makes ordering difficult
-      // whilst trying to resolve one multimessage, any multimessage can fail and be reattempted
-      // but this happens inside of a number of different actors and so there are no causal orderings
-      // but we need to do the 2pc for the multimessage to ensure we don't create deadlocking orderings on the cown actor
-      // message queueus
-
       m.when[U64Obj iso](c1).run({(x) => env.out.print(x.o.string()); x})
       m.when[U64Obj iso](c1).run({(x) => x.inc(); env.out.print("inc'd"); x})
       m.when[U64Obj iso](c1).run({(x) => env.out.print(x.o.string()); x})
