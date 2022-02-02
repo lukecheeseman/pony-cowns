@@ -126,10 +126,10 @@ actor Manager
       })
     end
 
-  fun tag when[A: Any #send](c1: Cown[A]): _When[A] =>
-    _When[A]._create(this, c1)
+  fun tag when[A: Any #send](c1: Cown[A]): _When1[A] =>
+    _When1[A]._create(this, c1)
 
-  class _When[A: Any #send]
+  class _When1[A: Any #send]
     let _manager: Manager
     let _c1: Cown[A]
 
@@ -137,54 +137,204 @@ actor Manager
       _manager = manager
       _c1 = c1
 
-    fun run(f: {ref (A): A^} iso) =>
-      // We need to maintain the iso-ness of the function so we abuse an array to pop the function
-      // in and out of the array
-      let body = Behaviour(1, {ref ()(fcell = recover iso [ consume f ] end) =>
+    fun run(f: {ref (A): (A^)} iso) =>
+      let body = Behaviour(1, {ref ()(cell = recover iso [ consume f ] end) =>
         try
-          _c1._empty({ref (a: A)(ffcell = recover iso [ fcell.pop()? ] end) =>
+          (let f) = cell.pop()?
+          _c1._empty({ref (a: A)(cell = recover iso [ (consume f) ] end, _c1 = _c1) =>
             try
-              _c1._fill(ffcell.pop()?(consume a))
+              (let f) = cell.pop()?
+              (let a') = f(consume a)
+              _c1._fill(consume a')
             end
           } iso)
         end
       } iso)
-
       _manager._send([_c1], body)
 
-    fun n[B: Any iso](c2: Cown[B]): _When2[A, B] =>
+    fun n[B: Any #send](c2: Cown[B]): _When2[A, B] =>
       _When2[A, B]._create(_manager, _c1, c2)
 
-  // A when over 2 cowns
   class _When2[A: Any #send, B: Any #send]
     let _manager: Manager
     let _c1: Cown[A]
     let _c2: Cown[B]
 
-    new _create(manager: Manager, c1: Cown[A], c2: Cown[B]) =>
+    new _create(manager: Manager tag, c1: Cown[A], c2: Cown[B]) =>
       _manager = manager
       _c1 = c1
       _c2 = c2
 
     fun run(f: {ref (A, B): (A^, B^)} iso) =>
-      let body = Behaviour(2, {ref ()(fcell = recover iso [ consume f ] end) =>
+      let body = Behaviour(2, {ref ()(cell = recover iso [ consume f ] end) =>
         try
-        _c1._empty({ref (a: A)(ffcell = recover iso [ fcell.pop()? ] end, _c2 = _c2) =>
-          try
-          _c2._empty({ref (b: B)(facell = recover iso [ (ffcell.pop()?, consume a) ] end, _c1 = _c1) =>
+          (let f) = cell.pop()?
+          _c1._empty({ref (a: A)(cell = recover iso [ (consume f) ] end, _c1 = _c1, _c2 = _c2) =>
             try
-              (let f, let a) = facell.pop()?
-              (let a', let b') = f(consume a, consume b)
-              _c1._fill(consume a')
-              _c2._fill(consume b')
+              (let f) = cell.pop()?
+              _c2._empty({ref (b: B)(cell = recover iso [ (consume f, consume a) ] end, _c1 = _c1, _c2 = _c2) =>
+                try
+                  (let f, let a) = cell.pop()?
+                  (let a', let b') = f(consume a, consume b)
+                  _c1._fill(consume a')
+                  _c2._fill(consume b')
+                end
+              } iso)
             end
           } iso)
-          end
-        } iso)
         end
       } iso)
-
       _manager._send([_c1; _c2], body)
+
+    fun n[C: Any #send](c3: Cown[C]): _When3[A, B, C] =>
+      _When3[A, B, C]._create(_manager, _c1, _c2, c3)
+
+  class _When3[A: Any #send, B: Any #send, C: Any #send]
+    let _manager: Manager
+    let _c1: Cown[A]
+    let _c2: Cown[B]
+    let _c3: Cown[C]
+
+    new _create(manager: Manager tag, c1: Cown[A], c2: Cown[B], c3: Cown[C]) =>
+      _manager = manager
+      _c1 = c1
+      _c2 = c2
+      _c3 = c3
+
+    fun run(f: {ref (A, B, C): (A^, B^, C^)} iso) =>
+      let body = Behaviour(3, {ref ()(cell = recover iso [ consume f ] end) =>
+        try
+          (let f) = cell.pop()?
+          _c1._empty({ref (a: A)(cell = recover iso [ (consume f) ] end, _c1 = _c1, _c2 = _c2, _c3 = _c3) =>
+            try
+              (let f) = cell.pop()?
+              _c2._empty({ref (b: B)(cell = recover iso [ (consume f, consume a) ] end, _c1 = _c1, _c2 = _c2, _c3 = _c3) =>
+                try
+                  (let f, let a) = cell.pop()?
+                  _c3._empty({ref (c: C)(cell = recover iso [ (consume f, consume a, consume b) ] end, _c1 = _c1, _c2 = _c2, _c3 = _c3) =>
+                    try
+                      (let f, let a, let b) = cell.pop()?
+                      (let a', let b', let c') = f(consume a, consume b, consume c)
+                      _c1._fill(consume a')
+                      _c2._fill(consume b')
+                      _c3._fill(consume c')
+                    end
+                  } iso)
+                end
+              } iso)
+            end
+          } iso)
+        end
+      } iso)
+      _manager._send([_c1; _c2; _c3], body)
+
+    fun n[D: Any #send](c4: Cown[D]): _When4[A, B, C, D] =>
+      _When4[A, B, C, D]._create(_manager, _c1, _c2, _c3, c4)
+
+  class _When4[A: Any #send, B: Any #send, C: Any #send, D: Any #send]
+    let _manager: Manager
+    let _c1: Cown[A]
+    let _c2: Cown[B]
+    let _c3: Cown[C]
+    let _c4: Cown[D]
+
+    new _create(manager: Manager tag, c1: Cown[A], c2: Cown[B], c3: Cown[C], c4: Cown[D]) =>
+      _manager = manager
+      _c1 = c1
+      _c2 = c2
+      _c3 = c3
+      _c4 = c4
+
+    fun run(f: {ref (A, B, C, D): (A^, B^, C^, D^)} iso) =>
+      let body = Behaviour(4, {ref ()(cell = recover iso [ consume f ] end) =>
+        try
+          (let f) = cell.pop()?
+          _c1._empty({ref (a: A)(cell = recover iso [ (consume f) ] end, _c1 = _c1, _c2 = _c2, _c3 = _c3, _c4 = _c4) =>
+            try
+              (let f) = cell.pop()?
+              _c2._empty({ref (b: B)(cell = recover iso [ (consume f, consume a) ] end, _c1 = _c1, _c2 = _c2, _c3 = _c3, _c4 = _c4) =>
+                try
+                  (let f, let a) = cell.pop()?
+                  _c3._empty({ref (c: C)(cell = recover iso [ (consume f, consume a, consume b) ] end, _c1 = _c1, _c2 = _c2, _c3 = _c3, _c4 = _c4) =>
+                    try
+                      (let f, let a, let b) = cell.pop()?
+                      _c4._empty({ref (d: D)(cell = recover iso [ (consume f, consume a, consume b, consume c) ] end, _c1 = _c1, _c2 = _c2, _c3 = _c3, _c4 = _c4) =>
+                        try
+                          (let f, let a, let b, let c) = cell.pop()?
+                          (let a', let b', let c', let d') = f(consume a, consume b, consume c, consume d)
+                          _c1._fill(consume a')
+                          _c2._fill(consume b')
+                          _c3._fill(consume c')
+                          _c4._fill(consume d')
+                        end
+                      } iso)
+                    end
+                  } iso)
+                end
+              } iso)
+            end
+          } iso)
+        end
+      } iso)
+      _manager._send([_c1; _c2; _c3; _c4], body)
+
+    fun n[E: Any #send](c5: Cown[E]): _When5[A, B, C, D, E] =>
+      _When5[A, B, C, D, E]._create(_manager, _c1, _c2, _c3, _c4, c5)
+
+  class _When5[A: Any #send, B: Any #send, C: Any #send, D: Any #send, E: Any #send]
+    let _manager: Manager
+    let _c1: Cown[A]
+    let _c2: Cown[B]
+    let _c3: Cown[C]
+    let _c4: Cown[D]
+    let _c5: Cown[E]
+
+    new _create(manager: Manager tag, c1: Cown[A], c2: Cown[B], c3: Cown[C], c4: Cown[D], c5: Cown[E]) =>
+      _manager = manager
+      _c1 = c1
+      _c2 = c2
+      _c3 = c3
+      _c4 = c4
+      _c5 = c5
+
+    fun run(f: {ref (A, B, C, D, E): (A^, B^, C^, D^, E^)} iso) =>
+      let body = Behaviour(5, {ref ()(cell = recover iso [ consume f ] end) =>
+        try
+          (let f) = cell.pop()?
+          _c1._empty({ref (a: A)(cell = recover iso [ (consume f) ] end, _c1 = _c1, _c2 = _c2, _c3 = _c3, _c4 = _c4, _c5 = _c5) =>
+            try
+              (let f) = cell.pop()?
+              _c2._empty({ref (b: B)(cell = recover iso [ (consume f, consume a) ] end, _c1 = _c1, _c2 = _c2, _c3 = _c3, _c4 = _c4, _c5 = _c5) =>
+                try
+                  (let f, let a) = cell.pop()?
+                  _c3._empty({ref (c: C)(cell = recover iso [ (consume f, consume a, consume b) ] end, _c1 = _c1, _c2 = _c2, _c3 = _c3, _c4 = _c4, _c5 = _c5) =>
+                    try
+                      (let f, let a, let b) = cell.pop()?
+                      _c4._empty({ref (d: D)(cell = recover iso [ (consume f, consume a, consume b, consume c) ] end, _c1 = _c1, _c2 = _c2, _c3 = _c3, _c4 = _c4, _c5 = _c5) =>
+                        try
+                          (let f, let a, let b, let c) = cell.pop()?
+                          _c5._empty({ref (e: E)(cell = recover iso [ (consume f, consume a, consume b, consume c, consume d) ] end, _c1 = _c1, _c2 = _c2, _c3 = _c3, _c4 = _c4, _c5 = _c5) =>
+                            try
+                              (let f, let a, let b, let c, let d) = cell.pop()?
+                              (let a', let b', let c', let d', let e') = f(consume a, consume b, consume c, consume d, consume e)
+                              _c1._fill(consume a')
+                              _c2._fill(consume b')
+                              _c3._fill(consume c')
+                              _c4._fill(consume d')
+                              _c5._fill(consume e')
+                            end
+                          } iso)
+                        end
+                      } iso)
+                    end
+                  } iso)
+                end
+              } iso)
+            end
+          } iso)
+        end
+      } iso)
+      _manager._send([_c1; _c2; _c3; _c4; _c5], body)
 
 /* A cown encapsulates a piece of state and a message queue.
 
