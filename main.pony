@@ -133,17 +133,17 @@ actor Main
       })
     })
 
-    fun test4(env: Env) =>
-      Start({(m: Manager)(env) =>
-        let first = Cown[Fork iso](Fork(1))
-        var prev = first
+  fun test4(env: Env) =>
+    Start({(m: Manager)(env) =>
+      let first = Cown[Fork iso](Fork(1))
+      var prev = first
 
-        let limit: U64 = 1000
-        var i: U64 = 0
-        while (i < limit) do
-          var next = Cown[Fork iso](Fork(i + 2))
-          Phil(i, prev, next).eat(m, env)
-          prev = next
-          i = i + 1
-        end
-      })
+      let limit: U64 = 1000
+      var i: U64 = 0
+      while (i < limit) do
+        var next = Cown[Fork iso](Fork(i + 2))
+        Phil(i, prev, next).eat(m, env)
+        prev = next
+        i = i + 1
+      end
+    })
