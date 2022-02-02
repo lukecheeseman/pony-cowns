@@ -55,7 +55,7 @@ class Phil
 
 actor Main
   new create(env: Env) =>
-    test3(env)
+    test4(env)
 
   fun test1(env: Env) =>
     Start({(m: Manager)(env) =>
@@ -132,3 +132,18 @@ actor Main
         x
       })
     })
+
+    fun test4(env: Env) =>
+      Start({(m: Manager)(env) =>
+        let first = Cown[Fork iso](Fork(1))
+        var prev = first
+
+        let limit: U64 = 1000
+        var i: U64 = 0
+        while (i < limit) do
+          var next = Cown[Fork iso](Fork(i + 2))
+          Phil(i, prev, next).eat(m, env)
+          prev = next
+          i = i + 1
+        end
+      })
